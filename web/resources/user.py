@@ -24,8 +24,8 @@ class ApiUsers(Resource):
     @jwt_required()
     def get(self):
         try:
-            users = User.objects.exclude("password").to_json()
-            return Response(getResponse(result=users), mimetype="application/json", status=200)
+            users = User.objects.exclude('password').to_json()
+            return Response(getResponse(result=users), mimetype='application/json', status=200)
         except DoesNotExist:
             raise NotExistError
         except Exception:
@@ -35,28 +35,48 @@ class ApiUser(Resource):
     @jwt_required()
     def get(self):
         try:
-            # jwt_user_id = get_jwt_identity()
+            try:
+                query_id = request.args.get('id')
+                query_email = None
+                query_username = None
 
-            query_id = request.args.get("id")
-            user = User.objects.exclude("password").get(id=query_id).to_json()
-            return Response(user, mimetype="application/json", status=200)
+                if query_id is None:
+                    query_email = request.args.get('email')
+                else:
+                    user = User.objects.exclude('password').get(id=query_id)
+                
+                if query_email is None:
+                    query_username = request.args.get('username')
+                else:
+                    user = User.objects.exclude('password').get(email=query_email)
+                
+                if query_username is not None:
+                    user = User.objects.exclude('password').get(username=query_username)
+                
+                user = user.to_json()
+            except User.DoesNotExist:
+                user = None
+
+            return Response(getResponse(result=user), mimetype='application/json', status=200)
         except DoesNotExist:
             raise NotExistError
-        except Exception:
+        except Exception as e:
             raise InternalServerError
 
     @jwt_required()
     def put(self):
         try:
-            query_id = request.args.get("id")
+            query_id = request.args.get('id')
             body = request.get_json()
-            body.pop("password", None)
+            body.pop('password', None)
 
             user = User.objects.get(id=query_id)
 
             user.update(**body)
 
-            return Response(getResponse(message="UPDATED", result=user.to_json()), mimetype="application/json", status=200)
+            user = user.to_json()
+
+            return Response(getResponse(message='UPDATED', result=user), mimetype='application/json', status=200)
         except InvalidQueryError:
             raise SchemaValidationError
         except DoesNotExist:
@@ -69,11 +89,15 @@ class ApiUser(Resource):
     @jwt_required()
     def delete(self):
         try:
-            query_id = request.args.get("id")
-            user = User.objects.get(id=query_id)
-            user.delete()
+            query_id = request.args.get('id')
             
-            return Response(getResponse(message="DELETED", result=user.to_json()), mimetype="application/json", status=200)
+            user = User.objects.get(id=query_id)
+
+            user.delete()
+
+            user = user.to_json()
+            
+            return Response(getResponse(message='DELETED', result=user), mimetype='application/json', status=200)
         except DoesNotExist:
             raise NotExistError
         except Exception:
@@ -83,14 +107,10 @@ class ApiUserPassword(Resource):
     @jwt_required()
     def put(self):
         try:
-            # jwt_user_id = get_jwt_identity()
-
-            # body = request.get_json()
-            # user = User.objects.get(email=body.get("email"))
-            query_id = request.args.get("id")
+            query_id = request.args.get('id')
             body = request.get_json()
-            password = body.get("password")
-            new_password = body.get("new_password")
+            password = body.get('password')
+            new_password = body.get('new_password')
 
             user = User.objects.get(id=query_id)
 
@@ -103,17 +123,14 @@ class ApiUserPassword(Resource):
             user.hash_password()
             user.save()
 
-            return Response(getResponse(message="UPDATED", result=user.to_json()), mimetype="application/json", status=200)
+            return Response(getResponse(message='UPDATED', result=user.to_json()), mimetype='application/json', status=200)
         except InvalidQueryError as e:
-            print(e)
             raise SchemaValidationError
         except DoesNotExist:
             raise NotExistError
         except UnauthorizedError:
             raise UnauthorizedError
         except ValidationError as e:
-            print(e)
             raise UpdateError(description=e.message)
         except Exception as e:
-            print(e)
             raise InternalServerError

@@ -95,7 +95,7 @@ class Tictactoe(object):
 
     def move(self, player, coord):
         if self.board[coord] != Object.Placeholder or self.status() != Status.Progress or self.turn_monitor != player:
-            raise ValueError("Invalid selected move")
+            raise ValueError('Invalid selected move')
         
         self.board[coord] = player
         self.turn_monitor = Object.Player if player == Object.Mozha else Object.Mozha

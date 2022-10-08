@@ -23,7 +23,9 @@ class InternalServerError(HTTPException):
     pass
 
 class SchemaValidationError(HTTPException):
-    pass
+    def __init__(self, description: t.Optional[str] = None, response: t.Optional["Response"] = None):
+        error = copy.deepcopy(errors["SchemaValidationError"])
+        super().__init__(description, Response(json.dumps(error), mimetype="application/json", status=400))
 
 class BadRequestError(HTTPException):
     pass
@@ -44,14 +46,16 @@ class DeleteError(HTTPException):
         error = copy.deepcopy(errors["DeleteError"])
         error["message"] = error["message"] + (" - " + description if description is not None else "")
         super().__init__(description, Response(json.dumps(error), mimetype="application/json", status=403))
-            
-    pass
 
 class NotExistError(HTTPException):
-    pass
+    def __init__(self, description: t.Optional[str] = None, response: t.Optional["Response"] = None):
+        error = copy.deepcopy(errors["NotExistError"])
+        super().__init__(description, Response(json.dumps(error), mimetype="application/json", status=400))
 
 class UnauthorizedError(HTTPException):
-    pass
+    def __init__(self, description: t.Optional[str] = None, response: t.Optional["Response"] = None):
+        error = copy.deepcopy(errors["UnauthorizedError"])
+        super().__init__(description, Response(json.dumps(error), mimetype="application/json", status=401))
 
 class EmailDoesNotExistsError(HTTPException):
     pass

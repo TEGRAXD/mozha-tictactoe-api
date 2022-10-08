@@ -5,18 +5,19 @@ from web.config.response import getResponse
 from web.database.models.tictactoe_game import TictactoeGame
 from web.database.models.tictactoe_move import TictactoeMove
 from web.database.models.user import User
-from mongoengine.errors import (
-    ValidationError,
-    MongoEngineException,
-    OperationError,
-)
-from werkzeug.exceptions import HTTPException, BadRequest
-import web.config.errors as err
+# from mongoengine.errors import (
+#     ValidationError,
+#     MongoEngineException,
+#     OperationError,
+# )
+# from werkzeug.exceptions import HTTPException, BadRequest
 
+import web.config.errors as err
+from mongoengine.errors import FieldDoesNotExist, NotUniqueError, \
+    DoesNotExist, ValidationError, InvalidQueryError
 
 import os
 import pathlib
-import getopt, sys
 import torch
 import numpy as np
 
@@ -37,22 +38,23 @@ class ApiTictactoeMoves(Resource):
 
             body = request.get_json()
 
-            if ("game" in body):
-                tgame = TictactoeGame.objects.get(id=body["game"])
+            if 'move' not in body:
+                raise ValidationError
+            
+            tgame = TictactoeGame.objects.get(id=body['game'])
 
             # Allowing null returned data
             try:
-                tmoves = TictactoeMove.objects(game=tgame).to_json()
+                tmoves = TictactoeMove.objects.get(game=tgame).to_json()
             except TictactoeMove.DoesNotExist:
                 tmoves = None
 
             return Response(getResponse(result=tmoves), mimetype="application/json", status=200)
-        except (MongoEngineException, ValidationError, OperationError) as e:
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__))
-        except HTTPException as e:
-            raise err.CustomHTTPException(code=e.code, description=e.name)
+        except ValidationError:
+            raise err.SchemaValidationError
+        except DoesNotExist:
+            raise err.NotExistError
         except Exception as e:
-            print(e)
             raise err.InternalServerError
 
 class ApiTictactoeMove(Resource):
@@ -62,14 +64,17 @@ class ApiTictactoeMove(Resource):
             jwt_user_id = get_jwt_identity()
 
             body = request.get_json()
+
+            if 'move' not in body:
+                raise ValidationError
             
-            tmove = TictactoeMove.objects.get(id=body["move"])
+            tmove = TictactoeMove.objects.get(id=body['move'])
 
             return Response(getResponse(result=tmove.to_json()), mimetype="application/json", status=200)
-        except (MongoEngineException, ValidationError, OperationError) as e:
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__))
-        except HTTPException as e:
-            raise err.CustomHTTPException(code=e.code, description=e.name)
+        except ValidationError:
+            raise err.SchemaValidationError
+        except DoesNotExist:
+            raise err.NotExistError
         except Exception as e:
             raise err.InternalServerError
 
@@ -79,65 +84,65 @@ class ApiTictactoeMove(Resource):
             jwt_user_id = get_jwt_identity()
 
             body = request.get_json()
+            
+            user = User.objects.get(id=jwt_user_id)
+
+            if 'game' not in body:
+                raise ValidationError
+
+            tgame = TictactoeGame.objects.get(id=body['game'])
 
             try:
-                user = User.objects.get(id=jwt_user_id)
-            except User.DoesNotExist:
-                user = None
+                tmoves = TictactoeMove.objects.get(game=tgame)
+            except TictactoeMove.DoesNotExist:
+                tmoves = None
+                turn = 1
+            else:
+                turn = len(tmoves) + 1
 
-            tgame = TictactoeGame.objects.get(id=body["game"])
+            if 'turn_monitor' not in body:
+                raise ValidationError
+            
+            if 'board' not in body:
+                raise ValidationError
 
             game = Tictactoe()
-            # game.toss()
-            game.turn_monitor = tgame.turn_monitor
-            game.board = np.array(body["board"])
-
-            scores_list = []
-            new_board_states_list = []
-
+            game.turn_monitor = body['turn_monitor']
+            game.board = np.array(body['board'])
+            
             move = Move(device)
 
-            # when mozha get the first turn to move
-            # user will send post and the server shouldn't save it to database as a valid move.
-            # instead, save mozha's move and return the correct response.
-
-            # when user get the first turn to move
-            # user will send post and the server will save it to database as a valid move.
+            tmove = None
 
             if game.status() == Status.Progress and game.turn_monitor == Object.Mozha:
-                # If its the program's turn, use the Move Selector function to select the next move
-                selected_move, new_board_state, score = move.model_move_selector(model, game.board, game.turn_monitor)
-                
-                scores_list.append(score[0][0])
-                new_board_states_list.append(new_board_state)
+                # If its Mozha's turn, use the Model Move Selector method to predict and select the next move
+                selected_move = move.model_move_selector(model, game.board, game.turn_monitor)
 
                 # Make the next move
                 game_status, board = game.move(game.turn_monitor, selected_move)
 
                 # Without user (Mozha create her own move)
-                tmove = TictactoeMove(game=tgame, move=list(selected_move), board=board, status=game_status)
+                tmove = TictactoeMove(game=tgame, turn=turn, turn_monitor=Object.Mozha, move=list(selected_move), board=board, status=game_status)
                 tmove.save()
-
-                tgame.update(turn_monitor=Object.Player)
             elif game.status() == Status.Progress and game.turn_monitor == Object.Player:
-                selected_move = tuple(body["move"])
+                if 'move' not in body:
+                    raise ValidationError
+                
+                selected_move = tuple(body['move'])
 
+                # Move method could produce ValueError with 'Invalid selected move' message 
                 game_status, board = game.move(game.turn_monitor, selected_move)    
                 
                 # Contains user (User create their own move)
-                tmove = TictactoeMove(user=user, game=tgame, move=list(selected_move), board=board, status=game_status)
+                tmove = TictactoeMove(user=user, game=tgame, turn=turn, turn_monitor=Object.Player, move=list(selected_move), board=board, status=game_status)
                 tmove.save()
-                
-                tgame.update(turn_monitor=Object.Mozha)
 
             tmove = tmove.to_json()
 
-            return Response(getResponse(result=tmove), mimetype="application/json", status=200)
-        except (MongoEngineException, ValidationError, OperationError) as e:
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__))
-        except HTTPException as e:
-            raise err.CustomHTTPException(code=e.code, description=e.name)
+            return Response(getResponse(result=tmove), mimetype='application/json', status=200)
+        except (FieldDoesNotExist, ValidationError):
+            raise err.SchemaValidationError
         except ValueError as e:
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__), opt_description=str(e))
+            raise err.CustomHTTPException(code=400, description='Invalid selected move')
         except Exception as e:
             raise err.InternalServerError

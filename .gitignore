@@ -1,5 +1,8 @@
 # Models
-models/
+tictactoe/models/
+
+# Private Note
+private.note
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

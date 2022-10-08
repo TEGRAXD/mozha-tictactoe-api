@@ -14,6 +14,7 @@ from mongoengine.errors import (
 )
 from jwt.exceptions import ExpiredSignatureError, DecodeError, InvalidTokenError
 from ..config.errors import (
+    BadRequestError,
     SchemaValidationError,
     InternalServerError,
     ExistError,
@@ -35,7 +36,7 @@ class ApiSignUp(Resource):
             user.hash_password()
             user.save()
             
-            return Response(getResponse(result=user.to_json()), mimetype="application/json", status=200)
+            return Response(getResponse(result=user.to_json()), mimetype='application/json', status=200)
         except FieldDoesNotExist:
             raise SchemaValidationError
         except NotUniqueError:
@@ -48,34 +49,42 @@ class ApiSignIn(Resource):
     def post(self):
         try:
             body = request.get_json()
-            user = User.objects.get(email=body.get("email"))
 
-            authorized = user.check_password(body.get("password"))
+            if (body.get('email') is None):
+                if (body.get('username') is None):
+                    raise BadRequestError
+                else:
+                    print(body.get('username'))
+                    user = User.objects.get(username=body.get('username'))
+            else:
+                user = User.objects.get(email=body.get('email'))
+
+            authorized = user.check_password(body.get('password'))
 
             if not authorized:
                 raise UnauthorizedError
-
-            expires = False  # False to disable expiration. Use datetime.timedelta(days=7) for expiration.
+            
+            # False to disable expiration. Use datetime.timedelta(days=7) for expiration.
+            expires = False
             
             access_token = create_access_token(identity=str(user.id), expires_delta=expires)
 
             res = {}
-            res["token"] = access_token
+            res['token'] = access_token
 
-            return Response(getResponse(result=json.dumps(res)), mimetype="application/json", status=200)
+            return Response(getResponse(result=json.dumps(res)), mimetype='application/json', status=200)
         except (UnauthorizedError, DoesNotExist):
             raise UnauthorizedError
         except Exception as e:
-            print(e)
             raise InternalServerError
 
 
 class ApiForgotPassword(Resource):
     def post(self):
-        url = request.host_url + "reset/"
+        url = request.host_url + 'reset/'
         try:
             body = request.get_json()
-            email = body.get("email")
+            email = body.get('email')
             if not email:
                 raise SchemaValidationError
 
@@ -87,15 +96,15 @@ class ApiForgotPassword(Resource):
             reset_token = create_access_token(str(user.id), expires_delta=expires)
 
             return send_email(
-                "[Mozha] Reset Your Password",
-                sender="support@astaria.space",
+                '[Mozha] Reset Your Password',
+                sender='support@astaria.space',
                 recipients=[user.email],
                 text_body=render_template(
-                    "email/reset_password.txt",
+                    'email/reset_password.txt',
                     url=url + reset_token,
                 ),
                 html_body=render_template(
-                    "email/reset_password.html",
+                    'email/reset_password.html',
                     url=url + reset_token,
                 ),
             )
@@ -110,16 +119,16 @@ class ApiForgotPassword(Resource):
 
 class ApiResetPassword(Resource):
     def post(self):
-        url = request.host_url + "reset/"
+        url = request.host_url + 'reset/'
         try:
             body = request.get_json()
-            reset_token = body.get("reset_token")
-            password = body.get("password")
+            reset_token = body.get('reset_token')
+            password = body.get('password')
 
             if not reset_token or not password:
                 raise SchemaValidationError
 
-            user_id = decode_token(reset_token)["sub"]
+            user_id = decode_token(reset_token)['sub']
 
             user = User.objects.get(id=user_id)
 
@@ -128,11 +137,11 @@ class ApiResetPassword(Resource):
             user.save()
 
             return send_email(
-                "[Mozha] Password reset successful",
-                sender="support@astaria.space",
+                '[Mozha] Password reset successful',
+                sender='support@astaria.space',
                 recipients=[user.email],
-                text_body="Password reset was successful",
-                html_body="<p>Password reset was successful</p>",
+                text_body='Password reset was successful',
+                html_body='<p>Password reset was successful</p>',
             )
 
         except SchemaValidationError:

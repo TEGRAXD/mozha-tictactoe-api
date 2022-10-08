@@ -4,13 +4,10 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from web.config.response import getResponse
 from web.database.models.tictactoe_game import TictactoeGame
 from web.database.models.user import User
-from mongoengine.errors import (
-    ValidationError,
-    MongoEngineException,
-    OperationError,
-)
-from werkzeug.exceptions import HTTPException, BadRequest
+
 import web.config.errors as err
+from mongoengine.errors import FieldDoesNotExist, NotUniqueError, \
+    DoesNotExist, ValidationError, InvalidQueryError
 
 class ApiTictactoeGames(Resource):
     @jwt_required()
@@ -20,12 +17,14 @@ class ApiTictactoeGames(Resource):
 
             body = request.get_json()
 
-            print(body["user"])
+            if 'email' in body:
+                user = User.objects.get(email=body['email'])
 
-            if ("user" in body):
-                user = User.objects.get(id=body["user"])
-            else:
-                user = User.objects.get(id=jwt_user_id)
+            if 'username' in body:
+                user = User.objects.get(username=body['username'])
+                
+            if 'user' in body:
+                user = User.objects.get(id=body['user'])
 
             # Allowing null returned data
             try:
@@ -33,12 +32,9 @@ class ApiTictactoeGames(Resource):
             except TictactoeGame.DoesNotExist:
                 tgames = None
 
-            return Response(getResponse(result=tgames), mimetype="application/json", status=200)
-        except (MongoEngineException, ValidationError, OperationError) as e:
-            print(e)
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__))
-        except HTTPException as e:
-            raise err.CustomHTTPException(code=e.code, description=e.name)
+            return Response(getResponse(result=tgames), mimetype='application/json', status=200)
+        except DoesNotExist:
+            raise err.NotExistError
         except Exception as e:
             raise err.InternalServerError
 
@@ -49,16 +45,15 @@ class ApiTictactoeGame(Resource):
             jwt_user_id = get_jwt_identity()
 
             body = request.get_json()
+            
+            if 'game' not in body:
+                raise ValidationError
+                
+            tgame = TictactoeGame.objects.get(id=body['game']).to_json()
 
-            user = User.objects.get(id=jwt_user_id)
-
-            tgame = TictactoeGame.objects.get(id=body["game"]).to_json()
-
-            return Response(getResponse(result=tgame), mimetype="application/json", status=200)
-        except (MongoEngineException, ValidationError, OperationError) as e:
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__))
-        except HTTPException as e:
-            raise err.CustomHTTPException(code=e.code, description=e.name)
+            return Response(getResponse(result=tgame), mimetype='application/json', status=200)
+        except DoesNotExist:
+            raise err.NotExistError
         except Exception as e:
             raise err.InternalServerError
 
@@ -76,10 +71,8 @@ class ApiTictactoeGame(Resource):
 
             tgame = tgame.to_json()
 
-            return Response(getResponse(result=tgame), mimetype="application/json", status=200)
-        except (MongoEngineException, ValidationError, OperationError) as e:
-            raise err.CustomHTTPException(code=500, description=str(e.__class__.__name__))
-        except HTTPException as e:
-            raise err.CustomHTTPException(code=e.code, description=e.name)
+            return Response(getResponse(result=tgame), mimetype='application/json', status=200)
+        except (FieldDoesNotExist, ValidationError):
+            raise err.SchemaValidationError
         except Exception as e:
             raise err.InternalServerError
