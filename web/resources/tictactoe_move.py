@@ -93,7 +93,15 @@ class ApiTictactoeMove(Resource):
             tgame = TictactoeGame.objects.get(id=body['game'])
 
             try:
-                tmoves = TictactoeMove.objects.get(game=tgame)
+                # objects.get() will raise an MultipleObjectsReturned error if multiple objects are returned.
+                # This is usually the case, when multiple objects are selected by the selection that
+                # specified in `get()`.
+                # `get()` should only be used when you are sure that only one result is retuned, e.g. by
+                # using the `id` as selector.
+                #
+                # object() are filtering queries when you expected more than one results. (`object()` in MongoEngine is same as `filter()` in Django)
+                # use `objects()` instead of `get()`
+                tmoves = TictactoeMove.objects(game=tgame)
             except TictactoeMove.DoesNotExist:
                 tmoves = None
                 turn = 1
@@ -109,20 +117,20 @@ class ApiTictactoeMove(Resource):
             game = Tictactoe()
             game.turn_monitor = body['turn_monitor']
             game.board = np.array(body['board'])
-            
+
             move = Move(device)
 
             tmove = None
 
             if game.status() == Status.Progress and game.turn_monitor == Object.Mozha:
                 # If its Mozha's turn, use the Model Move Selector method to predict and select the next move
-                selected_move = move.model_move_selector(model, game.board, game.turn_monitor)
+                selected_move, new_board_state, score = move.model_move_selector(model, game.board, game.turn_monitor)
 
                 # Make the next move
                 game_status, board = game.move(game.turn_monitor, selected_move)
 
                 # Without user (Mozha create her own move)
-                tmove = TictactoeMove(game=tgame, turn=turn, turn_monitor=Object.Mozha, move=list(selected_move), board=board, status=game_status)
+                tmove = TictactoeMove(game=tgame, turn=turn, turn_monitor=Object.Player, move=list(selected_move), board=board, status=game_status)
                 tmove.save()
             elif game.status() == Status.Progress and game.turn_monitor == Object.Player:
                 if 'move' not in body:
@@ -134,7 +142,7 @@ class ApiTictactoeMove(Resource):
                 game_status, board = game.move(game.turn_monitor, selected_move)    
                 
                 # Contains user (User create their own move)
-                tmove = TictactoeMove(user=user, game=tgame, turn=turn, turn_monitor=Object.Player, move=list(selected_move), board=board, status=game_status)
+                tmove = TictactoeMove(user=user, game=tgame, turn=turn, turn_monitor=Object.Mozha, move=list(selected_move), board=board, status=game_status)
                 tmove.save()
 
             tmove = tmove.to_json()
