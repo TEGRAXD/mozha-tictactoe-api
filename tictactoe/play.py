@@ -1,4 +1,4 @@
-# If you running this file, the error will be ModuleNotFound: No module named "tictactoe.params"; tictactoe is not a package.
+# If you running this file, the error will occured, it'll be ModuleNotFound: No module named "tictactoe.params"; tictactoe is not a package.
 # Remove "tictactoe." from line "from tictactoe.params import Object, Mode, Status"
 # in tictactoe/tictactoe.py.
 
